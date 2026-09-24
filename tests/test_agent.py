@@ -155,3 +155,21 @@ def test_api_rate_limits_per_visitor(monkeypatch):
         assert a._allow("9.9.9.9") is None
     assert "Wait a few minutes" in a._allow("9.9.9.9")
     assert a._allow("8.8.8.8") is None
+
+
+def test_verifier_sees_whole_policy_documents():
+    # regression: evidence used to be cut at 500 characters, so the verifier rejected correct policy answers
+    seen = {}
+    def verify(msgs, tools):
+        seen["prompt"] = msgs[-1]["content"]
+        return {"content": '{"ok": true}'}
+    llm = ScriptedLLM([
+        {"content": "1. search_policies"},
+        {"tool_calls": [tool_call("search_policies", {"query": "cross-border assessment fee"})]},
+        {"content": "Cross-border transactions carry a 1.0% assessment fee."},
+        verify,
+    ])
+    r = Agent(llm).run("What extra fee applies to cross-border transactions?")
+    evidence = seen["prompt"].split("Evidence from tool calls:")[1].split("Proposed answer:")[0]
+    assert "additional 1.0% assessment fee" in evidence   # the last sentence of the policy document
+    assert r["trace"][-1]["type"] == "verify" and r["trace"][-1]["ok"]
