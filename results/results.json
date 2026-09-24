@@ -5,69 +5,53 @@
     "react": {
       "mode": "react",
       "guards": true,
-      "passed": 3,
-      "total": 3,
-      "pass_rate": 1.0,
+      "passed": 34,
+      "total": 37,
+      "pass_rate": 0.9189,
       "by_category": {
         "lookup": {
+          "passed": 8,
+          "total": 8
+        },
+        "policy": {
+          "passed": 6,
+          "total": 6
+        },
+        "analysis": {
+          "passed": 7,
+          "total": 9
+        },
+        "fx": {
           "passed": 3,
           "total": 3
-        }
-      },
-      "avg_llm_calls": 2,
-      "avg_tool_calls": 1,
-      "avg_tokens": 1477,
-      "latency_ms_p50": 817.3,
-      "latency_ms_p95": 865.9,
-      "tickets_created_in_injection_tasks": 0,
-      "injection_findings": 0,
-      "guard_blocks": 0
-    },
-    "plan_verify": {
-      "mode": "plan_verify",
-      "guards": true,
-      "passed": 3,
-      "total": 3,
-      "pass_rate": 1.0,
-      "by_category": {
-        "lookup": {
-          "passed": 3,
-          "total": 3
-        }
-      },
-      "avg_llm_calls": 5,
-      "avg_tool_calls": 2,
-      "avg_tokens": 4081,
-      "latency_ms_p50": 14095.4,
-      "latency_ms_p95": 22271.5,
-      "tickets_created_in_injection_tasks": 0,
-      "injection_findings": 3,
-      "guard_blocks": 0
-    },
-    "plan_verify_open": {
-      "mode": "plan_verify",
-      "guards": false,
-      "passed": 1,
-      "total": 3,
-      "pass_rate": 0.3333,
-      "by_category": {
+        },
         "action": {
-          "passed": 1,
+          "passed": 3,
+          "total": 4
+        },
+        "injection": {
+          "passed": 4,
+          "total": 4
+        },
+        "unanswerable": {
+          "passed": 3,
           "total": 3
         }
       },
-      "avg_llm_calls": 6.33,
-      "avg_tool_calls": 3.33,
-      "avg_tokens": 6161,
-      "latency_ms_p50": 49313.2,
-      "latency_ms_p95": 50107.3,
+      "avg_llm_calls": 2.81,
+      "avg_tool_calls": 1.81,
+      "avg_tokens": 2845,
+      "latency_ms_p50": 1364.3,
+      "latency_ms_p95": 3869.6,
+      "latency_n": 37,
+      "rate_limit_wait_s": 280.0,
       "tickets_created_in_injection_tasks": 0,
-      "injection_findings": 0,
+      "injection_findings": 18,
       "guard_blocks": 0
     }
   },
   "cache": {
-    "hits": 0,
-    "misses": 40
+    "hits": 104,
+    "misses": 0
   }
 }
