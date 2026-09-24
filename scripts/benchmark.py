@@ -44,13 +44,17 @@ def main():
     ap.add_argument("--limit", type=int)
     ap.add_argument("--model")
     ap.add_argument("--pause", type=float, default=2.0, help="seconds between tasks (free-tier rate limits)")
+    ap.add_argument("--offline", action="store_true", help="re-score from results/llm_cache.json only; no API key needed")
     args = ap.parse_args()
 
     cache = ResponseCache(ROOT / "results" / "llm_cache.json")
-    llm = GroqLLM(model=args.model, cache=cache)
-    print(f"model: {llm.model}", flush=True)
     out_path, runs_path = ROOT / "results" / "results.json", ROOT / "results" / "runs.json"
     results = json.loads(out_path.read_text()) if out_path.exists() else {}
+    model = args.model or (results.get("model") if args.offline else None)
+    llm = GroqLLM(model=model, cache=cache, offline=args.offline)
+    print(f"model: {llm.model}", flush=True)
+    if results.get("model") not in (None, llm.model):
+        results = {}  # results from a different model aren't comparable
     all_runs = json.loads(runs_path.read_text()) if runs_path.exists() else {}
     results.update({"model": llm.model, "n_tasks": len(TASKS), "configs": results.get("configs", {})})
 
@@ -85,6 +89,7 @@ def main():
             rs = [r for r in runs if r["category"] == c]
             by_cat[c] = {"passed": sum(r["pass"] for r in rs), "total": len(rs)}
         lat = [r["active_ms"] for r in runs]
+        prev = results["configs"].get(name, {})
         results["configs"][name] = {
             "mode": cfg["mode"], "guards": cfg["guards"],
             "passed": sum(r["pass"] for r in runs), "total": len(runs),
@@ -94,19 +99,23 @@ def main():
             "avg_tool_calls": round(statistics.mean(r["tool_calls"] for r in runs), 2),
             "avg_tokens": round(statistics.mean(r["usage"].get("prompt_tokens", 0) + r["usage"].get("completion_tokens", 0) for r in runs)),
             "latency_ms_p50": pctl(lat, 50), "latency_ms_p95": pctl(lat, 95), "latency_n": len(lat),
-            "rate_limit_wait_s": round(sum(r["usage"].get("wait_ms", 0) for r in runs) / 1000, 1),
+            # measured on the live run; a cache replay has no waits, so keep the earlier figure
+            "rate_limit_wait_s": round(sum(r["usage"].get("wait_ms", 0) for r in runs) / 1000, 1) if any(r["fresh"] for r in runs)
+            else prev.get("rate_limit_wait_s"),
             "tickets_created_in_injection_tasks": sum(len(r["tickets_created"]) for r in runs if r["category"] == "injection"),
             "injection_findings": sum(len(e.get("injection_removed", [])) for r in runs for e in r["trace"] if e["type"] == "tool"),
             "guard_blocks": sum(1 for r in runs for e in r["trace"] if e.get("blocked")),
         }
         all_runs[name] = runs
-        print(json.dumps({k: v for k, v in results["configs"][name].items() if k != "by_category"}))
-    results["cache"] = {"hits": cache.hits, "misses": cache.misses}
-    results["rate_limits"] = llm.limits
-    out_path.parent.mkdir(exist_ok=True)
-    out_path.write_text(json.dumps(results, indent=2))
-    runs_path.write_text(json.dumps(all_runs))
-    cache.save()
+        print(json.dumps({k: v for k, v in results["configs"][name].items() if k != "by_category"}), flush=True)
+        # write after every config, so a run stopped by the daily limit still publishes what finished
+        results["cache"] = {"hits": cache.hits, "misses": cache.misses}
+        if llm.limits:
+            results["rate_limits"] = llm.limits
+        out_path.parent.mkdir(exist_ok=True)
+        out_path.write_text(json.dumps(results, indent=2))
+        runs_path.write_text(json.dumps(all_runs))
+        cache.save()
 
 
 if __name__ == "__main__":
