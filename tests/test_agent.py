@@ -173,3 +173,26 @@ def test_verifier_sees_whole_policy_documents():
     evidence = seen["prompt"].split("Evidence from tool calls:")[1].split("Proposed answer:")[0]
     assert "additional 1.0% assessment fee" in evidence   # the last sentence of the policy document
     assert r["trace"][-1]["type"] == "verify" and r["trace"][-1]["ok"]
+
+
+def test_live_api_falls_back_when_a_model_hits_its_daily_quota(monkeypatch):
+    import api.agent as a
+    from agent.llm import LLMError
+    monkeypatch.setenv("GROQ_API_KEY", "x")
+    monkeypatch.delenv("GROQ_MODEL", raising=False)
+    monkeypatch.setattr(a, "_exhausted", {})
+    monkeypatch.setattr(a, "_hits", a.defaultdict(a.deque))
+    tried = []
+    class FakeAgent:
+        def __init__(self, llm, tickets):
+            self.model = llm
+        def run(self, q, **kw):
+            tried.append(self.model)
+            if self.model == a.LIVE_MODELS[0]:
+                raise LLMError("daily or long rate limit reached: tokens per day")
+            return {"answer": "ok", "model": self.model}
+    monkeypatch.setattr(a, "Agent", FakeAgent)
+    monkeypatch.setattr(a, "_get_llm", lambda m: m)
+    status, body = a.live({"question": "How many merchants?"}, "9.9.9.9")
+    assert status == 200 and body["model"] == a.LIVE_MODELS[1] and tried == a.LIVE_MODELS[:2]
+    assert a.LIVE_MODELS[0] not in a._candidates()   # skipped for the next hour
