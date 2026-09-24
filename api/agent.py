@@ -29,14 +29,25 @@ _hits: dict[str, deque] = defaultdict(deque)
 _day = {"date": time.strftime("%Y-%m-%d"), "n": 0}
 _lock = threading.Lock()
 _cache = ResponseCache()
-_llm = None
+_llms: dict[str, GroqLLM] = {}
+_exhausted: dict[str, float] = {}   # model -> time it hit its daily quota
+# Live runs try these in order and skip any that has hit Groq's free daily quota, so the demo keeps working
+# (and a busy day on the demo doesn't eat the benchmark model's quota for long).
+LIVE_MODELS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3-32b", "llama-3.3-70b-versatile",
+               "llama-3.1-8b-instant"]
 
 
-def _get_llm():
-    global _llm
-    if _llm is None:
-        _llm = GroqLLM(cache=_cache, timeout=20)
-    return _llm
+def _candidates() -> list[str]:
+    if os.environ.get("GROQ_MODEL"):
+        return [os.environ["GROQ_MODEL"]]
+    now = time.time()
+    return [m for m in LIVE_MODELS if now - _exhausted.get(m, 0) > 3600]
+
+
+def _get_llm(model: str) -> GroqLLM:
+    if model not in _llms:
+        _llms[model] = GroqLLM(model=model, cache=_cache, timeout=20)
+    return _llms[model]
 
 
 def _allow(ip: str) -> str | None:
@@ -78,10 +89,18 @@ def live(body: dict, ip: str) -> tuple[int, dict]:
     limited = _allow(ip)
     if limited:
         return 429, {"error": limited}
-    try:
-        return 200, Agent(_get_llm(), TicketStore()).run(q, role=role, mode=mode, guards=True)
-    except LLMError as e:
-        return 503, {"error": f"The model service is busy or rate-limited right now ({e}). Try again in a minute."}
+    last = None
+    for model in _candidates():
+        try:
+            return 200, Agent(_get_llm(model), TicketStore()).run(q, role=role, mode=mode, guards=True)
+        except LLMError as e:
+            last = e
+            if "daily" in str(e) or "model_not_found" in str(e) or "does not exist" in str(e):
+                _exhausted[model] = time.time()
+                continue   # try the next free model
+            break
+    return 503, {"error": "The model service is busy or rate-limited right now. Try again in a minute, "
+                          "or browse the recorded runs below." + (f" ({str(last)[:120]})" if last else "")}
 
 
 class handler(BaseHTTPRequestHandler):
