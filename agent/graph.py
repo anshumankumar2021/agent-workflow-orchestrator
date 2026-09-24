@@ -77,12 +77,14 @@ def _now(t0: float) -> float:
 
 
 def _add_usage(state: State, resp: dict) -> dict:
-    u = dict(state.get("usage") or {"prompt_tokens": 0, "completion_tokens": 0, "llm_calls": 0, "cached_calls": 0})
+    u = dict(state.get("usage") or {"prompt_tokens": 0, "completion_tokens": 0, "llm_calls": 0, "cached_calls": 0, "wait_ms": 0, "api_ms": 0})
     ru = resp.get("usage") or {}
     u["prompt_tokens"] += ru.get("prompt_tokens", 0)
     u["completion_tokens"] += ru.get("completion_tokens", 0)
     u["llm_calls"] += 1
     u["cached_calls"] += 1 if resp.get("cached") else 0
+    u["wait_ms"] = round(u.get("wait_ms", 0) + resp.get("wait_ms", 0), 1)
+    u["api_ms"] = round(u.get("api_ms", 0) + resp.get("api_ms", 0), 1)   # model time, also known for cached replays
     return u
 
 
@@ -104,7 +106,7 @@ class Agent:
     def plan(self, s: State) -> dict:
         t = time.perf_counter()
         resp = self.llm.chat([{"role": "system", "content": self._system(s)},
-                              {"role": "user", "content": PLAN_PROMPT.format(q=s["question"])}], max_tokens=250)
+                              {"role": "user", "content": PLAN_PROMPT.format(q=s["question"])}], max_tokens=1024)
         plan = resp["content"].strip()
         return {"plan": plan, "usage": _add_usage(s, resp),
                 "trace": s["trace"] + [{"type": "plan", "text": plan, "ms": _now(t), "cached": resp.get("cached", False)}],
@@ -151,17 +153,17 @@ class Agent:
         evidence = "\n".join(f"- {e['tool']}({json.dumps(e['args'])[:200]}) -> {json.dumps(e.get('result', e.get('error')))[:500]}"
                              for e in s["trace"] if e["type"] == "tool") or "(no tool calls)"
         resp = self.llm.chat([{"role": "user", "content": VERIFY_PROMPT.format(q=s["question"], evidence=evidence, a=s.get("answer", ""))}],
-                             max_tokens=150)
+                             max_tokens=1024)
         usage = _add_usage(s, resp)
         m = re.search(r"\{.*\}", resp["content"], re.S)
         try:
-            verdict = json.loads(m.group(0)) if m else {"ok": True}
+            verdict = json.loads(m.group(0)) if m else {"ok": True, "unparsed": True}
         except json.JSONDecodeError:
-            verdict = {"ok": True}
+            verdict = {"ok": True, "unparsed": True}
         ok = bool(verdict.get("ok", True))
         rounds = s.get("verify_rounds", 0)
         trace = s["trace"] + [{"type": "verify", "ok": ok, "issue": verdict.get("issue", ""), "ms": _now(t),
-                               "cached": resp.get("cached", False)}]
+                               "cached": resp.get("cached", False), "unparsed": verdict.get("unparsed", False)}]
         if ok or rounds >= MAX_VERIFY_ROUNDS:
             return {"done": True, "trace": trace, "usage": usage, "verify_rounds": rounds}
         fix = f"A reviewer found a problem with your answer: {verdict.get('issue', '')} Check with the tools and give a corrected final answer."
