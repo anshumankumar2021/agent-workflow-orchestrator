@@ -1,0 +1,2 @@
+langgraph==1.2.12
+httpx==0.28.1

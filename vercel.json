@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "outputDirectory": "public",
+  "functions": {
+    "api/agent.py": {
+      "includeFiles": "{agent,policies,bench,data,results}/**",
+      "excludeFiles": "results/llm_cache.json",
+      "maxDuration": 60
+    }
+  }
+}
