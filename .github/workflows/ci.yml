@@ -45,6 +45,7 @@ jobs:
           CONFIGS: ${{ inputs.configs }}
           MODEL: ${{ inputs.model }}
           LIMIT: ${{ inputs.limit }}
+          PYTHONUNBUFFERED: "1"
         run: |
           test -n "$GROQ_API_KEY" || { echo "::error::Add a GROQ_API_KEY repository secret first"; exit 1; }
           python -m scripts.benchmark --configs "$CONFIGS" ${MODEL:+--model "$MODEL"} ${LIMIT:+--limit "$LIMIT"}
