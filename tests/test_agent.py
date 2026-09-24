@@ -120,6 +120,21 @@ def test_groq_client_retries_rate_limits_and_caches(monkeypatch):
     a = llm.chat([{"role": "user", "content": "hello"}])
     b = llm.chat([{"role": "user", "content": "hello"}])
     assert a["content"] == "hi" and not a["cached"] and b["cached"] and calls["n"] == 2
+    assert a["wait_ms"] == 1000 and llm.wait_s == 1        # backoff is tracked separately from model time
+    assert b["api_ms"] == a["api_ms"]                      # cached replays keep the original timing
+
+
+def test_groq_client_stops_on_daily_limit(monkeypatch):
+    import pytest
+    from agent.llm import LLMError
+    def handler(request):
+        return httpx.Response(429, headers={"retry-after": "5"},
+                              json={"error": {"message": "Rate limit reached on tokens per day (TPD)"}})
+    llm = GroqLLM(model="test-model", api_key="x", cache=ResponseCache())
+    llm.client = httpx.Client(base_url="https://example.test", transport=httpx.MockTransport(handler))
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    with pytest.raises(LLMError, match="daily"):
+        llm.chat([{"role": "user", "content": "hello"}])
 
 
 def test_api_contract_without_a_key(monkeypatch):
