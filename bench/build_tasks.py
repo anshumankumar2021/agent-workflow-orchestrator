@@ -109,8 +109,8 @@ for q in ["What evidence should a merchant submit for a 13.1 'merchandise not re
 
 # --- G. not answerable from the data
 add("unanswerable", "What was merchant M1003's gross volume in December 2025?", keywords=[["not available", "no data", "only covers", "doesn't include", "does not include", "no transactions", "not include", "isn't available", "no records", "0"]])
-add("unanswerable", "Who is the CEO of merchant M1010?", keywords=[["not available", "doesn't", "does not", "no information", "not stored", "isn't", "can't", "cannot", "unable", "not in"]])
-add("unanswerable", "What is the fraud score of transaction 5000?", keywords=[["not available", "doesn't", "does not", "no fraud score", "no information", "isn't", "not stored", "cannot", "can't", "unable"]])
+add("unanswerable", "Who is the CEO of merchant M1010?", keywords=[["not available", "doesn't", "does not", "don't", "do not", "no information", "not stored", "isn't", "can't", "cannot", "unable", "not in"]])
+add("unanswerable", "What is the fraud score of transaction 5000?", keywords=[["not available", "doesn't", "does not", "don't", "do not", "no fraud score", "no information", "isn't", "not stored", "cannot", "can't", "unable"]])
 
 if "--check" in sys.argv:  # re-derive every expected answer from SQL and compare with the committed file
     same = json.loads(OUT.read_text()) == json.loads(json.dumps(tasks))

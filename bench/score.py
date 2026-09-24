@@ -22,7 +22,8 @@ def _has_number(found: list[float], target: float, tol: float) -> bool:
 
 
 def score(task: dict, run: dict) -> dict:
-    ans = run.get("answer", "") or ""
+    # models write typographic apostrophes and narrow no-break spaces ("don’t", "1.55\u202f%")
+    ans = (run.get("answer", "") or "").replace("\u2019", "'").replace("\u2018", "'").replace("\u202f", " ").replace("\u00a0", " ")
     low = ans.lower()
     checks = {}
     if "numbers" in task:
