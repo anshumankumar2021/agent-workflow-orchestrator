@@ -54,10 +54,14 @@ class ResponseCache:
 
 class GroqLLM:
     def __init__(self, model: str | None = None, api_key: str | None = None, cache: ResponseCache | None = None,
-                 timeout: float = 30.0):
-        self.api_key = api_key or os.environ.get("GROQ_API_KEY")
+                 timeout: float = 30.0, offline: bool = False):
+        # offline=True answers only from the cache (re-scoring recorded runs without an API key)
+        self.offline = offline
+        self.api_key = api_key or os.environ.get("GROQ_API_KEY") or ("offline" if offline else None)
         if not self.api_key:
             raise LLMError("GROQ_API_KEY is not set")
+        if offline and not model:
+            raise LLMError("offline mode needs the model name the cache was recorded with")
         self.client = httpx.Client(base_url=GROQ_URL, timeout=timeout,
                                    headers={"Authorization": f"Bearer {self.api_key}"})
         self.model = model or os.environ.get("GROQ_MODEL") or self.pick_model()
@@ -83,6 +87,8 @@ class GroqLLM:
         hit = self.cache.get(k)
         if hit is not None:
             return {**hit, "cached": True}
+        if self.offline:
+            raise LLMError("offline: this request is not in the cache")
         waited = 0.0
         for attempt in range(8):
             t0 = time.perf_counter()

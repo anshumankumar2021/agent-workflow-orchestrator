@@ -150,8 +150,7 @@ class Agent:
 
     def verify(self, s: State) -> dict:
         t = time.perf_counter()
-        evidence = "\n".join(f"- {e['tool']}({json.dumps(e['args'])[:200]}) -> {json.dumps(e.get('result', e.get('error')))[:500]}"
-                             for e in s["trace"] if e["type"] == "tool") or "(no tool calls)"
+        evidence = _evidence(s["trace"])
         resp = self.llm.chat([{"role": "user", "content": VERIFY_PROMPT.format(q=s["question"], evidence=evidence, a=s.get("answer", ""))}],
                              max_tokens=1024)
         usage = _add_usage(s, resp)
@@ -217,6 +216,26 @@ class Agent:
                 "plan": out.get("plan"), "trace": out["trace"], "usage": out.get("usage", {}),
                 "tool_calls": out.get("tool_calls", 0), "tickets_created": self.tickets.tickets[start:],
                 "model": getattr(self.llm, "model", "?"), "total_ms": _now(t0)}
+
+
+EVIDENCE_PER_TOOL = 2500   # characters of each tool result the verifier sees (a policy document is ~1,000)
+EVIDENCE_TOTAL = 9000
+
+
+def _evidence(trace: list) -> str:
+    """Tool calls and results for the verifier. Results must be long enough to include whole policy documents,
+    or the verifier flags correct answers as unsupported."""
+    lines = []
+    for e in trace:
+        if e["type"] != "tool":
+            continue
+        out = e.get("result", {"error": e.get("error") or e.get("blocked")})
+        text = json.dumps(out, ensure_ascii=False)
+        if len(text) > EVIDENCE_PER_TOOL:
+            text = text[:EVIDENCE_PER_TOOL] + " …(truncated)"
+        lines.append(f"- {e['tool']}({json.dumps(e['args'], ensure_ascii=False)[:300]}) -> {text}")
+    ev = "\n".join(lines) or "(no tool calls)"
+    return ev if len(ev) <= EVIDENCE_TOTAL else "…(earlier calls omitted)\n" + ev[-EVIDENCE_TOTAL:]
 
 
 def _screen_result(result: dict) -> tuple[dict, list[str]]:
