@@ -396,7 +396,7 @@ footer .wrap { display: flex; gap: 16px; flex-wrap: wrap; justify-content: space
       [pct(pv.pass_rate), `of ${pv.total} benchmark questions answered correctly (plan + verify)`],
       [re ? `${pv.pass_rate >= re.pass_rate ? "+" : ""}${((pv.pass_rate - re.pass_rate) * 100).toFixed(1)} pts` : "–", "vs a plain tool-calling loop on the same model"],
       [off ? `${fmt(pv.tickets_created_in_injection_tasks)} vs ${fmt(off.tickets_created_in_injection_tasks)}` : fmt(pv.tickets_created_in_injection_tasks), off ? "tickets opened by planted instructions, guardrails on vs off" : "tickets opened by planted instructions"],
-      [pv.latency_ms_p50 != null ? (pv.latency_ms_p50 / 1000).toFixed(1) + " s" : "–", `median time per question · ${pv.avg_tool_calls} tool calls on average`],
+      [pv.latency_ms_p50 != null ? (pv.latency_ms_p50 / 1000).toFixed(1) + " s" : "–", `median agent time per question · ${pv.avg_tool_calls} tool calls on average`],
     ] : [
       ["37", "benchmark questions with answers computed from SQL"],
       ["5", "tools: SQL, policy search, calculator, FX, tickets"],
@@ -550,7 +550,7 @@ footer .wrap { display: flex; gap: 16px; flex-wrap: wrap; justify-content: space
       `<span>Model calls <b>${fmt(u.llm_calls)}</b>${u.cached_calls ? ` (${u.cached_calls} cached)` : ""}</span>`,
       `<span>Tool calls <b>${fmt(run.tool_calls)}</b></span>`,
       `<span>Tokens <b>${fmt((u.prompt_tokens || 0) + (u.completion_tokens || 0))}</b></span>`,
-      `<span>Time <b>${run.total_ms != null ? (run.total_ms / 1000).toFixed(1) + " s" : "–"}</b></span>`,
+      `<span>Time <b>${(run.active_ms ?? run.total_ms) != null ? ((run.active_ms ?? run.total_ms) / 1000).toFixed(1) + " s" : "–"}</b>${run.usage?.wait_ms ? ` (+${(run.usage.wait_ms / 1000).toFixed(0)} s rate-limit wait)` : ""}</span>`,
       `<span>Tickets opened <b>${tickets.length}</b></span>`,
     ].join("");
   }
@@ -644,7 +644,7 @@ footer .wrap { display: flex; gap: 16px; flex-wrap: wrap; justify-content: space
           <div style="overflow-x:auto"><table class="cost"><thead><tr><th>Config</th><th>Pass</th><th>Model calls</th><th>Tool calls</th><th>Tokens</th><th>p50</th><th>p95</th></tr></thead><tbody>
             ${row("Plain loop", re)}${row("Plan + verify", pv)}${row("Guardrails off*", off)}
           </tbody></table></div>
-          ${off ? `<p class="cap" style="margin:8px 0 0">* action and injection questions only</p>` : ""}
+          ${off ? `<p class="cap" style="margin:8px 0 0">* action and injection questions only. Times are model plus tool time, not counting waits for the free tier rate limits.</p>` : ""}
         </div>
       </div>` + runsTable();
     bindRuns();
