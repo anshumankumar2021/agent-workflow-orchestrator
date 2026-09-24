@@ -501,6 +501,7 @@ footer .wrap { display: flex; gap: 16px; flex-wrap: wrap; justify-content: space
     if (e.type === "answer") return `<li class="step answer"><span class="dot">A</span><h4>${next?.type === "verify" ? "Proposed answer" : "Answer"} ${t}</h4><div class="answer-box">${esc(e.text)}</div></li>`;
     if (e.type === "verify") {
       const final = e.ok || !next;
+      if (e.unparsed) return `<li class="step verify no"><span class="dot">?</span><h4>Check gave no verdict ${t}</h4><div class="body">The reviewer pass didn't return a usable verdict, so the answer was sent unchecked.</div></li>`;
       return `<li class="step verify${e.ok ? "" : " no"}"><span class="dot">${e.ok ? "✓" : "!"}</span><h4>${e.ok ? "Check passed, answer sent" : "Check found a problem"} ${t}</h4>${e.ok ? `<div class="body">Every number is backed by a tool result, and no action was taken that wasn't asked for.</div>` : `<div class="callout warn">${esc(e.issue)} ${final ? "The retry limit was reached, so this answer was sent as is." : "The agent goes back to fix it."}</div>`}</li>`;
     }
     if (e.type === "llm_error") return `<li class="step err"><span class="dot">!</span><h4>Malformed tool call ${t}</h4><div class="body">${esc(e.text)} The agent is asked to retry.</div></li>`;
