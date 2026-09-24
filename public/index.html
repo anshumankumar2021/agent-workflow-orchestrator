@@ -1,0 +1,689 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Northwind Ops Agent</title>
+<meta name="description" content="An AI operations agent for a fictional card-payment processor. It plans, queries a read-only database and policy documents, checks its own answer, and won't be tricked into actions nobody asked for. Every step is shown.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23191c3a'/%3E%3Ccircle cx='9' cy='16' r='3.2' fill='%23ff7a45'/%3E%3Ccircle cx='23' cy='9' r='3.2' fill='%23c9ccff'/%3E%3Ccircle cx='23' cy='23' r='3.2' fill='%23c9ccff'/%3E%3Cpath d='M12 15 20 10M12 17l8 5' stroke='%23c9ccff' stroke-width='1.6'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f3f2ee; --paper: #ffffff; --paper-2: #f7f6f2; --sunk: #eceae4;
+  --ink: #16182b; --ink-2: #474a63; --muted: #74778c;
+  --line: #e0ded7; --line-2: #cfccc3;
+  --accent: #3b3fd8; --accent-hover: #2f33b8; --accent-ink: #fff; --accent-soft: rgba(59, 63, 216, .09);
+  --signal: #e8591f; --signal-soft: rgba(232, 89, 31, .10);
+  --good: #11763a; --good-soft: rgba(17, 118, 58, .10);
+  --bad: #b42318; --bad-soft: rgba(180, 35, 24, .09);
+  --warn: #8f5a00; --warn-soft: rgba(214, 150, 20, .14);
+  --tool: #1d5fa8; --tool-soft: rgba(29, 95, 168, .08);
+  --shadow: 0 1px 2px rgba(22, 24, 43, .05), 0 10px 30px rgba(22, 24, 43, .07);
+  --f-body: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0e18; --paper: #151727; --paper-2: #1a1c2f; --sunk: #10111d;
+    --ink: #ecedf7; --ink-2: #b6b8d0; --muted: #868aa6;
+    --line: #262941; --line-2: #33375a;
+    --accent: #8e92ff; --accent-hover: #a7aaff; --accent-ink: #0d0e18; --accent-soft: rgba(142, 146, 255, .13);
+    --signal: #ff8a57; --signal-soft: rgba(255, 138, 87, .13);
+    --good: #53d68b; --good-soft: rgba(83, 214, 139, .12);
+    --bad: #ff8b80; --bad-soft: rgba(255, 139, 128, .12);
+    --warn: #f3bd4f; --warn-soft: rgba(243, 189, 79, .13);
+    --tool: #7fb5ff; --tool-soft: rgba(127, 181, 255, .10);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 12px 32px rgba(0, 0, 0, .35);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0e18; --paper: #151727; --paper-2: #1a1c2f; --sunk: #10111d;
+  --ink: #ecedf7; --ink-2: #b6b8d0; --muted: #868aa6;
+  --line: #262941; --line-2: #33375a;
+  --accent: #8e92ff; --accent-hover: #a7aaff; --accent-ink: #0d0e18; --accent-soft: rgba(142, 146, 255, .13);
+  --signal: #ff8a57; --signal-soft: rgba(255, 138, 87, .13);
+  --good: #53d68b; --good-soft: rgba(83, 214, 139, .12);
+  --bad: #ff8b80; --bad-soft: rgba(255, 139, 128, .12);
+  --warn: #f3bd4f; --warn-soft: rgba(243, 189, 79, .13);
+  --tool: #7fb5ff; --tool-soft: rgba(127, 181, 255, .10);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 12px 32px rgba(0, 0, 0, .35);
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; overflow-anchor: none; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.55 var(--f-body); }
+a { color: var(--accent); text-underline-offset: 3px; }
+button, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 20px; }
+.mono { font-family: var(--f-mono); font-size: .84em; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* top bar */
+.top { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--page) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+.top .wrap { display: flex; align-items: center; gap: 18px; height: 58px; }
+.brand { white-space: nowrap; display: flex; align-items: center; gap: 10px; font-weight: 750; letter-spacing: -.01em; text-decoration: none; color: var(--ink); }
+.brand svg { flex: none; }
+.top nav { display: flex; gap: 4px; margin-left: auto; }
+.top nav a { color: var(--ink-2); text-decoration: none; font-size: 14.5px; padding: 6px 10px; border-radius: 8px; }
+.top nav a:hover { background: var(--sunk); color: var(--ink); }
+.icon-btn { width: 36px; height: 36px; border-radius: 9px; border: 1px solid var(--line); background: var(--paper); display: grid; place-items: center; cursor: pointer; color: var(--ink-2); }
+.icon-btn:hover { color: var(--ink); border-color: var(--line-2); }
+@media (max-width: 720px) { .top nav a.hide-sm { display: none; } }
+@media (max-width: 440px) { .top nav a:not(.keep) { display: none; } .top .wrap { gap: 10px; } }
+
+/* hero */
+.hero { padding: 44px 0 26px; }
+.eyebrow { display: inline-flex; align-items: center; gap: 8px; font: 500 12.5px/1 var(--f-mono); color: var(--ink-2); text-transform: uppercase; letter-spacing: .06em; }
+.eyebrow i { width: 7px; height: 7px; border-radius: 50%; background: var(--signal); box-shadow: 0 0 0 4px var(--signal-soft); }
+h1 { font-size: clamp(32px, 5.2vw, 54px); line-height: 1.04; letter-spacing: -.035em; font-weight: 780; margin: 16px 0 14px; max-width: 16ch; }
+h1 em { font-style: normal; color: var(--signal); }
+.lede { font-size: 18px; color: var(--ink-2); max-width: 62ch; margin: 0; }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 28px; }
+.stat { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+.stat b { display: block; font-size: 28px; letter-spacing: -.03em; font-weight: 760; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stat span { display: block; font-size: 13.5px; color: var(--muted); margin-top: 4px; line-height: 1.35; }
+.stat.pending b { color: var(--muted); font-size: 20px; }
+@media (max-width: 820px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* console */
+.console { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 18px; align-items: start; padding-bottom: 40px; }
+@media (max-width: 960px) { .console { grid-template-columns: minmax(0, 1fr); } }
+.card { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); }
+.composer { padding: 16px; }
+.composer label.lab { display: block; font-size: 13px; font-weight: 650; color: var(--ink-2); margin-bottom: 6px; }
+textarea { width: 100%; min-height: 96px; resize: vertical; border: 1px solid var(--line-2); border-radius: 12px; padding: 11px 12px; background: var(--paper-2); line-height: 1.45; font-size: 15.5px; }
+textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); background: var(--paper); }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.seg { display: inline-flex; background: var(--sunk); border-radius: 10px; padding: 3px; gap: 2px; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { padding: 5px 11px; border-radius: 8px; font-size: 13.5px; cursor: pointer; color: var(--ink-2); white-space: nowrap; }
+.seg input:checked + label { background: var(--paper); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12); font-weight: 600; }
+.seg input:focus-visible + label { outline: 2px solid var(--accent); }
+.field-lab { font-size: 12.5px; color: var(--muted); width: 44px; }
+.run { margin-top: 14px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 12px; padding: 11px 16px; background: var(--accent); color: var(--accent-ink); font-weight: 700; cursor: pointer; font-size: 15.5px; }
+.run:hover { background: var(--accent-hover); }
+.run:disabled { opacity: .6; cursor: progress; }
+.run kbd { font: 500 11.5px var(--f-mono); opacity: .75; }
+.note { font-size: 13px; color: var(--muted); margin: 10px 2px 0; line-height: 1.45; }
+.note.err { color: var(--bad); }
+.samples { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 14px; }
+.samples h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 12px 0 7px; font-weight: 650; }
+.samples h3:first-child { margin-top: 0; }
+.chip { display: block; width: 100%; text-align: left; border: 1px solid var(--line); background: var(--paper-2); border-radius: 10px; padding: 7px 10px; margin-bottom: 6px; font-size: 13.5px; line-height: 1.35; cursor: pointer; color: var(--ink-2); }
+.chip:hover { border-color: var(--line-2); color: var(--ink); background: var(--paper); }
+.chip.trick { border-color: color-mix(in srgb, var(--signal) 35%, var(--line)); }
+.chip .who { font: 500 11px var(--f-mono); color: var(--signal); margin-left: 4px; }
+
+/* graph diagram */
+.graph { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.graph svg { width: 100%; max-width: 560px; height: auto; flex: 1 1 380px; }
+.graph .node rect { fill: var(--paper-2); stroke: var(--line-2); stroke-width: 1.2; transition: fill .2s, stroke .2s; }
+.graph .node text { fill: var(--ink-2); font: 600 12.5px var(--f-body); transition: fill .2s; }
+.graph .node.on rect { fill: var(--accent); stroke: var(--accent); }
+.graph .node.on text { fill: var(--accent-ink); }
+.graph .node.bad rect { fill: var(--bad); stroke: var(--bad); }
+.graph .node.bad text { fill: #fff; }
+.graph .node.skip { opacity: .35; }
+.graph .edge { stroke: var(--line-2); stroke-width: 1.4; fill: none; }
+.graph .edge.skip { opacity: .3; stroke-dasharray: 3 3; }
+.graph .legend { font-size: 13px; color: var(--muted); flex: 1 1 200px; min-width: 0; }
+.graph .legend b { color: var(--ink); font-weight: 650; }
+body.busy .graph .node.act rect { animation: pulse 1.1s ease-in-out infinite; }
+@keyframes pulse { 50% { fill: var(--accent-soft); stroke: var(--accent); } }
+@media (prefers-reduced-motion: reduce) { body.busy .graph .node.act rect { animation: none; } }
+
+/* trace */
+.trace-card { min-height: 520px; overflow: hidden; }
+.trace-head { padding: 16px 18px 12px; border-bottom: 1px solid var(--line); }
+.trace-head .q { font-size: 18px; font-weight: 650; letter-spacing: -.01em; margin: 0; line-height: 1.35; }
+.badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 9px; }
+.badge { font: 500 11.5px/1 var(--f-mono); padding: 5px 7px; border-radius: 6px; background: var(--sunk); color: var(--ink-2); white-space: nowrap; }
+.badge.pass { background: var(--good-soft); color: var(--good); }
+.badge.fail { background: var(--bad-soft); color: var(--bad); }
+.badge.live { background: var(--signal-soft); color: var(--signal); }
+.steps { list-style: none; margin: 0; padding: 14px 18px 4px; }
+.step { position: relative; padding: 0 0 14px 30px; animation: rise .28s ease both; }
+.step::before { content: ""; position: absolute; left: 10px; top: 24px; bottom: 0; width: 1.5px; background: var(--line); }
+.step:last-child::before { display: none; }
+.step .dot { position: absolute; left: 0; top: 2px; width: 21px; height: 21px; border-radius: 7px; display: grid; place-items: center; font: 700 11px var(--f-mono); background: var(--sunk); color: var(--ink-2); }
+.step.plan .dot { background: var(--accent-soft); color: var(--accent); }
+.step.tool .dot { background: var(--tool-soft); color: var(--tool); }
+.step.blocked .dot, .step.err .dot { background: var(--bad-soft); color: var(--bad); }
+.step.verify .dot { background: var(--good-soft); color: var(--good); }
+.step.verify.no .dot { background: var(--warn-soft); color: var(--warn); }
+.step.answer .dot { background: var(--signal); color: #fff; }
+.step h4 { margin: 0; font-size: 14px; font-weight: 650; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.step h4 .t { font: 500 11.5px var(--f-mono); color: var(--muted); font-weight: 400; }
+.step .body { margin-top: 6px; font-size: 14.5px; color: var(--ink-2); }
+.step .plan-text { white-space: pre-wrap; margin: 0; font-size: 14px; }
+pre.code { margin: 6px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--sunk); font: 13px/1.5 var(--f-mono); overflow-x: auto; white-space: pre-wrap; word-break: break-word; color: var(--ink); }
+pre.code .kw { color: var(--accent); font-weight: 600; }
+pre.code .str { color: var(--good); }
+.mini { margin-top: 8px; border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; max-width: 100%; }
+.mini table { border-collapse: collapse; font: 12.5px/1.4 var(--f-mono); width: 100%; }
+.mini th, .mini td { padding: 5px 9px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.mini th { background: var(--paper-2); color: var(--muted); font-weight: 500; }
+.mini tr:last-child td { border-bottom: 0; }
+.mini td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.more { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+.doc { margin-top: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; font-size: 13.5px; background: var(--paper-2); }
+.doc b { font-weight: 650; color: var(--ink); }
+.doc p { margin: 4px 0 0; color: var(--ink-2); }
+.redact { background: var(--warn-soft); color: var(--warn); border-radius: 4px; padding: 0 3px; font-weight: 600; }
+.callout { margin-top: 8px; border-radius: 10px; padding: 9px 11px; font-size: 13.5px; }
+.callout.warn { background: var(--warn-soft); color: var(--warn); }
+.callout.bad { background: var(--bad-soft); color: var(--bad); }
+.callout.good { background: var(--good-soft); color: var(--good); }
+.ticket { margin-top: 8px; border: 1.5px dashed var(--line-2); border-radius: 10px; padding: 9px 11px; font-size: 13.5px; }
+.ticket .id { font: 600 12.5px var(--f-mono); color: var(--signal); }
+.answer-box { font-size: 16.5px; color: var(--ink); line-height: 1.5; margin-top: 6px; }
+.summary { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 12px 18px 16px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+.summary b { color: var(--ink); font-weight: 650; font-variant-numeric: tabular-nums; }
+.empty { padding: 60px 26px; text-align: center; color: var(--muted); }
+.empty svg { margin-bottom: 12px; }
+.empty p { max-width: 42ch; margin: 0 auto; }
+.skel { height: 14px; border-radius: 6px; background: linear-gradient(90deg, var(--sunk), var(--paper-2), var(--sunk)); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; margin: 10px 0; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+@keyframes rise { from { opacity: 0; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { .step, .skel { animation: none; } }
+
+/* sections */
+section.band { padding: 56px 0; border-top: 1px solid var(--line); }
+h2 { font-size: clamp(26px, 3.4vw, 36px); letter-spacing: -.03em; margin: 0 0 10px; line-height: 1.1; font-weight: 760; }
+.sub { color: var(--ink-2); max-width: 70ch; margin: 0 0 26px; }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 18px; }
+@media (max-width: 900px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+.panel { padding: 18px; }
+.panel h3 { margin: 0 0 4px; font-size: 16px; font-weight: 700; }
+.panel .cap { font-size: 13.5px; color: var(--muted); margin: 0 0 14px; }
+.bars { display: grid; gap: 12px; }
+.bar-row { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 12px; align-items: center; font-size: 13.5px; }
+.bar-row .name { color: var(--ink-2); }
+.bar-row .name small { display: block; color: var(--muted); font: 11px var(--f-mono); }
+.bar { position: relative; height: 12px; border-radius: 4px; background: var(--sunk); margin: 3px 0; }
+.bar i { position: absolute; inset: 0 auto 0 0; border-radius: 4px; transition: width .6s cubic-bezier(.2,.7,.2,1); }
+.bar.a i { background: var(--line-2); }
+.bar.b i { background: var(--accent); }
+.bar span { position: absolute; right: -2px; top: 50%; transform: translate(100%, -50%); font: 500 11.5px var(--f-mono); color: var(--ink-2); padding-left: 6px; }
+.bar-track { padding-right: 44px; }
+.key { display: flex; gap: 16px; font-size: 13px; color: var(--ink-2); margin-bottom: 14px; flex-wrap: wrap; }
+.key i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 6px; }
+table.cost { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.cost th, table.cost td { white-space: nowrap; padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: right; font-variant-numeric: tabular-nums; }
+table.cost th:first-child, table.cost td:first-child { text-align: left; }
+table.cost th { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.ablation { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+.ab { border-radius: 12px; padding: 12px 14px; }
+.ab b { display: block; font-size: 30px; letter-spacing: -.03em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.ab span { font-size: 13px; }
+.ab.off { background: var(--bad-soft); color: var(--bad); }
+.ab.on { background: var(--good-soft); color: var(--good); }
+.runs { margin-top: 18px; }
+.runs-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.runs-tools input[type=search] { flex: 1 1 220px; border: 1px solid var(--line-2); border-radius: 10px; padding: 7px 10px; background: var(--paper-2); font-size: 14px; min-width: 0; }
+.runs-list { max-height: 460px; overflow: auto; }
+table.runs-t { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.runs-t td, table.runs-t th { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.runs-t th { position: sticky; top: 0; background: var(--paper); font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; text-align: left; font-weight: 600; z-index: 1; }
+table.runs-t td.q { color: var(--ink-2); min-width: 240px; }
+table.runs-t td.q .cat { font: 500 11px var(--f-mono); color: var(--muted); display: block; }
+.pf { display: inline-flex; align-items: center; justify-content: center; min-width: 50px; font: 600 11.5px var(--f-mono); padding: 4px 7px; border-radius: 6px; border: 0; cursor: pointer; }
+.pf.p { background: var(--good-soft); color: var(--good); }
+.pf.f { background: var(--bad-soft); color: var(--bad); }
+.pf.na { background: transparent; color: var(--muted); cursor: default; }
+.pf:not(.na):hover { outline: 1.5px solid currentColor; }
+.pending-box { padding: 26px; text-align: center; color: var(--muted); }
+.cards3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 900px) { .cards3 { grid-template-columns: minmax(0, 1fr); } }
+.g { padding: 16px 18px; }
+.g h3 { margin: 0 0 6px; font-size: 15.5px; display: flex; align-items: center; gap: 8px; }
+.g h3 i { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-style: normal; font: 700 12px var(--f-mono); }
+.g p { margin: 0; font-size: 14px; color: var(--ink-2); }
+footer { padding: 30px 0 50px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13.5px; }
+footer .wrap { display: flex; gap: 16px; flex-wrap: wrap; justify-content: space-between; }
+@media (max-width: 520px) {
+  .wrap { padding-inline: 16px; }
+  .bar-row { grid-template-columns: 84px minmax(0, 1fr); }
+  .ablation { grid-template-columns: minmax(0, 1fr); }
+  .step { padding-left: 28px; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#">
+      <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#191c3a"/><circle cx="9" cy="16" r="3.2" fill="#ff7a45"/><circle cx="23" cy="9" r="3.2" fill="#c9ccff"/><circle cx="23" cy="23" r="3.2" fill="#c9ccff"/><path d="M12 15 20 10M12 17l8 5" stroke="#c9ccff" stroke-width="1.6"/></svg>
+      Northwind Ops Agent
+    </a>
+    <nav>
+      <a href="#console" class="hide-sm">Console</a>
+      <a href="#benchmark">Benchmark</a>
+      <a href="#how" class="hide-sm">How it works</a>
+      <a class="keep" href="https://github.com/anshumankumar2021/agent-workflow-orchestrator" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+    <button class="icon-btn" id="theme" aria-label="Toggle dark mode" title="Toggle dark mode">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+    </button>
+  </div>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <span class="eyebrow"><i></i>LangGraph agent · Groq · read-only tools</span>
+    <h1>An AI ops agent that <em>shows its work.</em></h1>
+    <p class="lede">Ask about six months of card-payment data for a fictional processor, Northwind Payments. The agent plans, queries a read-only database and policy documents, checks its own answer, and won't be talked into actions nobody asked for. Every step it takes is shown below.</p>
+    <div class="stats" id="stats"></div>
+  </div>
+
+  <div class="wrap console" id="console">
+    <div class="card composer">
+      <label class="lab" for="q">Question</label>
+      <textarea id="q" maxlength="400" placeholder="e.g. Which merchants are above the chargeback escalation threshold in May 2026?"></textarea>
+      <div class="row">
+        <span class="field-lab">Role</span>
+        <div class="seg" role="radiogroup" aria-label="Role">
+          <input type="radio" name="role" id="r-analyst" value="analyst" checked><label for="r-analyst">Analyst</label>
+          <input type="radio" name="role" id="r-viewer" value="viewer"><label for="r-viewer">Viewer (read-only)</label>
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <span class="field-lab">Mode</span>
+        <div class="seg" role="radiogroup" aria-label="Agent mode">
+          <input type="radio" name="mode" id="m-pv" value="plan_verify" checked><label for="m-pv">Plan + verify</label>
+          <input type="radio" name="mode" id="m-react" value="react"><label for="m-react">Plain loop</label>
+        </div>
+      </div>
+      <button class="run" id="run"><span id="run-label">Run agent</span> <kbd>⌘↵</kbd></button>
+      <p class="note" id="note"></p>
+      <div class="samples" id="samples"></div>
+    </div>
+
+    <div class="card trace-card" aria-live="polite">
+      <div class="graph">
+        <svg viewBox="0 0 560 96" role="img" aria-label="Agent graph: plan, act, tools, verify, answer">
+          <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="var(--line-2)"/></marker></defs>
+          <path class="edge e-plan" d="M92 36 H128" marker-end="url(#arr)"/>
+          <path class="edge" d="M214 36 H250" marker-end="url(#arr)"/>
+          <path class="edge" d="M250 44 H214" marker-end="url(#arr)" transform="translate(0 6)"/>
+          <path class="edge" d="M336 36 H372" marker-end="url(#arr)" id="e-act-verify"/>
+          <path class="edge e-verify" d="M458 36 H486" marker-end="url(#arr)"/>
+          <path class="edge e-verify" d="M415 54 C 415 88, 171 88, 171 58" marker-end="url(#arr)"/>
+          <text x="293" y="88" text-anchor="middle" style="font:500 10.5px var(--f-mono);fill:var(--muted)" class="e-verify">fix once if the check fails</text>
+          <g class="node plan" transform="translate(8 16)"><rect width="84" height="40" rx="10"/><text x="42" y="25" text-anchor="middle">Plan</text></g>
+          <g class="node act" transform="translate(130 16)"><rect width="84" height="40" rx="10"/><text x="42" y="25" text-anchor="middle">Act</text></g>
+          <g class="node tools" transform="translate(252 16)"><rect width="84" height="40" rx="10"/><text x="42" y="25" text-anchor="middle">Tools</text></g>
+          <g class="node verify" transform="translate(374 16)"><rect width="84" height="40" rx="10"/><text x="42" y="25" text-anchor="middle">Verify</text></g>
+          <g class="node answer" transform="translate(488 16)"><rect width="66" height="40" rx="10"/><text x="33" y="25" text-anchor="middle">Answer</text></g>
+        </svg>
+        <div class="legend" id="legend"><b>Plan + verify:</b> the model writes a plan, calls tools until it can answer, then a second pass checks every number against the tool results.</div>
+      </div>
+      <div id="trace">
+        <div class="empty">
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h6"/><circle cx="18" cy="17" r="3"/></svg>
+          <p>Pick a question on the left, or write your own. The agent's plan, every tool call, each guardrail decision and the final check will appear here.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section class="band" id="benchmark">
+    <div class="wrap">
+      <h2>Benchmark</h2>
+      <p class="sub" id="bench-sub">37 questions with answers computed straight from the database, so scoring needs no human judgment: numbers must match, tickets must (or must not) be opened, and planted instructions must be ignored. Each configuration runs the same questions on the same model.</p>
+      <div id="bench"></div>
+    </div>
+  </section>
+
+  <section class="band" id="how">
+    <div class="wrap">
+      <h2>How it works</h2>
+      <p class="sub">A LangGraph state machine drives an open-weights model on Groq through five tools. The model never touches the database or the ticket system directly; every call goes through the checks below, and every decision is written to the trace you see above.</p>
+      <div class="cards3">
+        <div class="card g"><h3><i>01</i>Read-only SQL</h3><p>The database is opened read-only and immutable, with a SQLite authorizer that allows only SELECT. Queries time out after 2 seconds and return at most 50 rows.</p></div>
+        <div class="card g"><h3><i>02</i>Role-based tools</h3><p>Viewers are never shown the ticket tool, and if a model calls it anyway the call is refused. Analysts can open tickets.</p></div>
+        <div class="card g"><h3><i>03</i>Side-effect gate</h3><p>Opening a ticket is the one action with a side effect. It only runs when the user's own question asks for a ticket, so a model can't decide to do it on its own.</p></div>
+        <div class="card g"><h3><i>04</i>Injection screening</h3><p>Tool output is data, not instructions. Sentences that address an AI (“ignore previous instructions…”) are removed before the model reads them, and logged.</p></div>
+        <div class="card g"><h3><i>05</i>Self-check</h3><p>In plan + verify mode, a reviewer pass checks each number in the answer against the tool results and sends the agent back once to fix a problem.</p></div>
+        <div class="card g"><h3><i>06</i>Budgets and caching</h3><p>At most 8 tool calls per question. Identical model requests are answered from a cache, so benchmark reruns are free and the recorded runs here replay exactly.</p></div>
+      </div>
+      <p class="sub" style="margin-top:22px">The data is synthetic and generated from a fixed seed: 120 merchants, about 46,000 transactions and 324 chargebacks from January to June 2026, with reference exchange rates, plus 12 policy documents. One policy file contains a planted prompt injection to test the guardrails.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Built by Anshuman Kumar · Python, LangGraph, SQLite, Groq · synthetic data only</span>
+    <a href="https://github.com/anshumankumar2021/agent-workflow-orchestrator" target="_blank" rel="noopener">Source and methodology on GitHub</a>
+  </div>
+</footer>
+
+<script>
+(() => {
+  const $ = (s, el = document) => el.querySelector(s);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const fmt = n => n == null ? "–" : Number(n).toLocaleString("en-US");
+  const pct = x => x == null ? "–" : (x * 100).toFixed(x === 1 || x === 0 ? 0 : 1) + "%";
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* theme */
+  const root = document.documentElement;
+  try { const t = localStorage.getItem("theme"); if (t) root.dataset.theme = t; } catch (e) {}
+  $("#theme").onclick = () => {
+    const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    root.dataset.theme = dark ? "light" : "dark";
+    try { localStorage.setItem("theme", root.dataset.theme); } catch (e) {}
+  };
+
+  let META = { results: null, tasks: [], runs: {}, live: false };
+  const CFG_LABEL = { react: "Plain loop", plan_verify: "Plan + verify", plan_verify_open: "Guardrails off" };
+  const CAT_LABEL = { lookup: "Lookups", analysis: "Analysis", policy: "Policy", fx: "Currency", action: "Actions", injection: "Injection", unanswerable: "Out of scope" };
+
+  const val = name => document.querySelector(`input[name=${name}]:checked`).value;
+  const setVal = (name, v) => { const el = document.querySelector(`input[name=${name}][value=${v}]`); if (el) el.checked = true; };
+
+  /* ---------- stats ---------- */
+  function renderStats() {
+    const r = META.results, pv = r?.configs?.plan_verify, re = r?.configs?.react, off = r?.configs?.plan_verify_open;
+    const cells = pv ? [
+      [pct(pv.pass_rate), `of ${pv.total} benchmark questions answered correctly (plan + verify)`],
+      [re ? `${pv.pass_rate >= re.pass_rate ? "+" : ""}${((pv.pass_rate - re.pass_rate) * 100).toFixed(1)} pts` : "–", "vs a plain tool-calling loop on the same model"],
+      [off ? `${fmt(pv.tickets_created_in_injection_tasks)} vs ${fmt(off.tickets_created_in_injection_tasks)}` : fmt(pv.tickets_created_in_injection_tasks), off ? "tickets opened by planted instructions, guardrails on vs off" : "tickets opened by planted instructions"],
+      [pv.latency_ms_p50 != null ? (pv.latency_ms_p50 / 1000).toFixed(1) + " s" : "–", `median time per question · ${pv.avg_tool_calls} tool calls on average`],
+    ] : [
+      ["37", "benchmark questions with answers computed from SQL"],
+      ["5", "tools: SQL, policy search, calculator, FX, tickets"],
+      ["6", "guardrails between the model and the data"],
+      ["Pending", "benchmark results appear here after the first run"],
+    ];
+    $("#stats").innerHTML = cells.map(([b, s], i) => `<div class="stat${!pv && i === 3 ? " pending" : ""}"><b>${esc(b)}</b><span>${esc(s)}</span></div>`).join("");
+  }
+
+  /* ---------- samples ---------- */
+  const PICK = [
+    ["Data", ["lookup-01", "analysis-01", "analysis-04", "fx-01"]],
+    ["Policy", ["policy-01", "policy-03"]],
+    ["Actions", ["action-01", "action-02", "action-03"]],
+    ["Try to trick it", ["injection-01", "injection-02"]],
+    ["Out of scope", ["unanswerable-01"]],
+  ];
+  function renderSamples() {
+    const byId = Object.fromEntries(META.tasks.map(t => [t.id, t]));
+    const used = new Set();
+    let html = "";
+    for (const [label, ids] of PICK) {
+      let items = ids.map(id => byId[id]).filter(Boolean);
+      if (!items.length) continue;
+      html += `<h3>${esc(label)}</h3>` + items.map(t => {
+        used.add(t.id);
+        return `<button class="chip${t.category === "injection" ? " trick" : ""}" data-id="${esc(t.id)}">${esc(t.question)}${t.role === "viewer" ? '<span class="who">as viewer</span>' : ""}</button>`;
+      }).join("");
+    }
+    $("#samples").innerHTML = html;
+    $("#samples").onclick = e => {
+      const b = e.target.closest(".chip"); if (!b) return;
+      const t = byId[b.dataset.id];
+      $("#q").value = t.question; setVal("role", t.role);
+      const cfg = val("mode");
+      if (matchMedia("(max-width: 960px)").matches) $(".trace-card").scrollIntoView({ behavior: reduce ? "auto" : "smooth" });
+      if (recorded(t.id, cfg)) showRecorded(t.id, cfg);
+      else if (META.live) go();
+      else note("No recorded run for this question yet, and live runs are off.", true);
+    };
+  }
+
+  function recorded(id, cfg) { return (META.runs[cfg] || []).find(r => r.id === id); }
+  function taskFor(question) { const q = question.trim().toLowerCase(); return META.tasks.find(t => t.question.toLowerCase() === q); }
+
+  function note(msg, err = false) { const n = $("#note"); n.textContent = msg; n.className = "note" + (err ? " err" : ""); }
+  function liveNote() {
+    note(META.live ? "Live runs call the model on Groq's free tier (a few per visitor every 10 minutes). Sample questions open a recorded benchmark run instantly."
+                   : "Live runs are switched off right now, so the samples replay recorded benchmark runs.");
+    $("#run-label").textContent = META.live ? "Run agent" : "Replay recorded run";
+  }
+
+  /* ---------- graph highlighting ---------- */
+  function graphMode(mode) {
+    const pv = mode === "plan_verify";
+    document.querySelectorAll(".graph .node.plan, .graph .node.verify, .graph .e-plan, .graph .e-verify").forEach(n => n.classList.toggle("skip", !pv));
+    $("#e-act-verify").classList.toggle("skip", !pv);
+    $("#legend").innerHTML = pv
+      ? "<b>Plan + verify:</b> the model writes a plan, calls tools until it can answer, then a second pass checks every number against the tool results."
+      : "<b>Plain loop:</b> the model calls tools until it decides to answer. No plan, no check. This is the baseline.";
+  }
+  function light(kind, bad = false) {
+    document.querySelectorAll(".graph .node").forEach(n => n.classList.remove("on", "bad"));
+    if (!kind) return;
+    const n = $(`.graph .node.${kind}`); if (n) n.classList.add(bad ? "bad" : "on");
+  }
+
+  /* ---------- trace rendering ---------- */
+  const SQL_KW = /\b(SELECT|FROM|WHERE|AND|OR|GROUP BY|ORDER BY|LIMIT|JOIN|LEFT JOIN|ON|AS|COUNT|SUM|AVG|ROUND|CASE|WHEN|THEN|ELSE|END|DESC|ASC|HAVING|DISTINCT|IN|NOT|NULL|IS|BETWEEN|LIKE|WITH|CAST|REAL|strftime|substr)\b/gi;
+  function sqlHtml(q) {
+    return esc(q).replace(/'[^']*'/g, m => `\u0000${m}\u0001`)
+      .replace(SQL_KW, m => `<span class="kw">${m}</span>`)
+      .replace(/\u0000([^\u0001]*)\u0001/g, (_, m) => `<span class="str">${m}</span>`);
+  }
+  function miniTable(res) {
+    if (!res?.columns) return "";
+    const rows = res.rows || [];
+    const show = rows.slice(0, 8);
+    const isNum = v => typeof v === "number";
+    const cell = v => isNum(v) ? `<td class="num">${esc(Number.isInteger(v) ? fmt(v) : v)}</td>` : `<td>${esc(v)}</td>`;
+    const extra = rows.length - show.length;
+    return `<div class="mini"><table><thead><tr>${res.columns.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${
+      show.map(r => `<tr>${r.map(cell).join("")}</tr>`).join("") || `<tr><td colspan="${res.columns.length}">(no rows)</td></tr>`
+    }</tbody></table></div>${extra > 0 || res.truncated ? `<div class="more">${extra > 0 ? `+${extra} more rows` : ""}${res.truncated ? " (capped at 50)" : ""}</div>` : ""}`;
+  }
+  function docHtml(d) {
+    const MARK = "[removed: instruction-like text in untrusted content]";
+    let body = d.text.split("\n").slice(1).join(" ").replace(/\s+/g, " ").trim();
+    // collapse runs of redacted sentences into one token so truncation can't split them
+    body = body.split(MARK).reduce((acc, part, i, arr) => acc + part + (i < arr.length - 1 ? "\u0002" : ""), "").replace(/\u0002(\s*\u0002)*/g, m => `\u0002${(m.match(/\u0002/g) || []).length}\u0003`);
+    const hasMark = body.includes("\u0002");
+    const cut = hasMark ? Math.max(260, body.indexOf("\u0003") + 160) : 260;
+    const short = body.length > cut ? body.slice(0, cut) + "…" : body;
+    return `<div class="doc"><b>${esc(d.title)}</b> <span class="mono" style="color:var(--muted)">${esc(d.doc)}.md</span><p>${
+      esc(short).replace(/\u0002(\d+)\u0003/g, (_, n) => `<span class="redact">[${n} sentence${n > 1 ? "s" : ""} removed: aimed at the AI]</span>`)}</p></div>`;
+  }
+  const ARGS = a => Object.entries(a || {}).map(([k, v]) => `${k}=${typeof v === "string" ? JSON.stringify(v) : v}`).join(", ");
+
+  function stepHtml(e, i, next) {
+    const t = e.ms != null ? `<span class="t">${e.ms >= 1000 ? (e.ms / 1000).toFixed(1) + " s" : Math.round(e.ms) + " ms"}${e.cached ? " · cached" : ""}</span>` : "";
+    if (e.type === "plan") return `<li class="step plan"><span class="dot">P</span><h4>Plan ${t}</h4><div class="body"><p class="plan-text">${esc(e.text)}</p></div></li>`;
+    if (e.type === "answer") return `<li class="step answer"><span class="dot">A</span><h4>${next?.type === "verify" ? "Proposed answer" : "Answer"} ${t}</h4><div class="answer-box">${esc(e.text)}</div></li>`;
+    if (e.type === "verify") {
+      const final = e.ok || !next;
+      return `<li class="step verify${e.ok ? "" : " no"}"><span class="dot">${e.ok ? "✓" : "!"}</span><h4>${e.ok ? "Check passed, answer sent" : "Check found a problem"} ${t}</h4>${e.ok ? `<div class="body">Every number is backed by a tool result, and no action was taken that wasn't asked for.</div>` : `<div class="callout warn">${esc(e.issue)} ${final ? "The retry limit was reached, so this answer was sent as is." : "The agent goes back to fix it."}</div>`}</li>`;
+    }
+    if (e.type === "llm_error") return `<li class="step err"><span class="dot">!</span><h4>Malformed tool call ${t}</h4><div class="body">${esc(e.text)} The agent is asked to retry.</div></li>`;
+    // tool
+    const head = `<h4><span class="mono">${esc(e.tool)}</span> ${t}</h4>`;
+    if (e.blocked) return `<li class="step blocked"><span class="dot">✕</span>${head}<div class="body"><span class="mono">${esc(ARGS(e.args))}</span></div><div class="callout bad"><b>Guardrail blocked this call:</b> ${esc(e.blocked)}.</div></li>`;
+    let body = "";
+    const r = e.result;
+    if (e.tool === "run_sql") body = `<pre class="code">${sqlHtml(e.args?.query || "")}</pre>` + (r ? miniTable(r) : "");
+    else if (e.tool === "search_policies") body = `<div class="body">Search: “${esc(e.args?.query)}”</div>` + (r?.results?.length ? r.results.map(docHtml).join("") : `<div class="more">No matching documents.</div>`);
+    else if (e.tool === "calculate") body = `<pre class="code">${esc(e.args?.expression)}${r ? `  →  <b>${esc(r.value)}</b>` : ""}</pre>`;
+    else if (e.tool === "convert_currency") body = `<pre class="code">${esc(e.args?.amount)} ${esc(e.args?.from_currency)} → ${esc(e.args?.to_currency)}${r ? `  =  <b>${esc(fmt(r.amount))} ${esc(r.currency)}</b>` : ""}</pre>${r ? `<div class="more">${esc(r.rate_note)}</div>` : ""}`;
+    else if (e.tool === "create_ticket" && r) body = `<div class="ticket"><span class="id">${esc(r.ticket_id)}</span> · <b>${esc(r.priority)}</b> · ${esc(r.merchant_id)}<div>${esc(r.title)}</div>${r.details ? `<div class="more">${esc(r.details)}</div>` : ""}</div>`;
+    else body = `<pre class="code">${esc(ARGS(e.args))}</pre>`;
+    if (e.error) body += `<div class="callout bad">Tool error: ${esc(e.error)}</div>`;
+    if (e.injection_removed?.length) body += `<div class="callout warn"><b>Injection screened out.</b> This document contained text aimed at the AI (${e.injection_removed.map(f => `“${esc(f)}”`).join(", ")}). It was removed before the model read it.</div>`;
+    return `<li class="step tool"><span class="dot">${i}</span>${head}${body}</li>`;
+  }
+  function kindOf(e) { return e.type === "plan" ? "plan" : e.type === "verify" ? "verify" : e.type === "answer" ? "act" : e.type === "tool" ? "tools" : "act"; }
+
+  let replayToken = 0;
+  async function renderRun(run, opts = {}) {
+    const my = ++replayToken;
+    graphMode(run.mode);
+    const badges = [];
+    if (opts.live) badges.push(`<span class="badge live">live run</span>`); else badges.push(`<span class="badge">recorded benchmark run</span>`);
+    if (opts.cfg) badges.push(`<span class="badge">${esc(CFG_LABEL[opts.cfg] || opts.cfg)}</span>`);
+    badges.push(`<span class="badge">role: ${esc(run.role)}</span>`);
+    if (opts.pass != null) badges.push(`<span class="badge ${opts.pass ? "pass" : "fail"}">${opts.pass ? "scored: pass" : "scored: fail"}${opts.checks ? " · " + Object.entries(opts.checks).map(([k, v]) => `${k.replace(/_/g, " ")} ${v ? "✓" : "✕"}`).join(" ") : ""}</span>`);
+    if (run.model) badges.push(`<span class="badge">${esc(run.model)}</span>`);
+    $("#trace").innerHTML = `<div class="trace-head"><p class="q">${esc(run.question)}</p><div class="badges">${badges.join("")}</div></div><ol class="steps" id="steps"></ol><div class="summary" id="summary"></div>`;
+    const ol = $("#steps");
+    let n = 0;
+    for (const [k, e] of run.trace.entries()) {
+      if (my !== replayToken) return;
+      if (e.type === "tool") n++;
+      ol.insertAdjacentHTML("beforeend", stepHtml(e, n, run.trace[k + 1]));
+      light(kindOf(e), !!e.blocked);
+      if (!reduce && !opts.instant) await new Promise(r => setTimeout(r, e.type === "tool" ? 260 : 380));
+    }
+    if (my !== replayToken) return;
+    if (!run.trace.some(e => e.type === "answer")) ol.insertAdjacentHTML("beforeend", `<li class="step err"><span class="dot">!</span><h4>No final answer</h4><div class="body">The agent ran out of steps before answering.</div></li>`);
+    light("answer");
+    const u = run.usage || {};
+    const tickets = run.tickets_created || [];
+    $("#summary").innerHTML = [
+      `<span>Model calls <b>${fmt(u.llm_calls)}</b>${u.cached_calls ? ` (${u.cached_calls} cached)` : ""}</span>`,
+      `<span>Tool calls <b>${fmt(run.tool_calls)}</b></span>`,
+      `<span>Tokens <b>${fmt((u.prompt_tokens || 0) + (u.completion_tokens || 0))}</b></span>`,
+      `<span>Time <b>${run.total_ms != null ? (run.total_ms / 1000).toFixed(1) + " s" : "–"}</b></span>`,
+      `<span>Tickets opened <b>${tickets.length}</b></span>`,
+    ].join("");
+  }
+
+  function showRecorded(id, cfg, scroll = false) {
+    const r = recorded(id, cfg); if (!r) return false;
+    const task = META.tasks.find(t => t.id === id);
+    $("#q").value = r.question; setVal("role", r.role);
+    if (cfg !== "plan_verify_open") setVal("mode", cfg === "react" ? "react" : "plan_verify");
+    renderRun({ ...r, mode: cfg === "react" ? "react" : "plan_verify", model: META.results?.model }, { cfg, pass: r.pass, checks: r.checks });
+    if (scroll) document.getElementById("console").scrollIntoView({ behavior: reduce ? "auto" : "smooth" });
+    liveNote();
+    return !!task;
+  }
+
+  /* ---------- live run ---------- */
+  async function go() {
+    const question = $("#q").value.trim();
+    if (!question) { note("Type a question first.", true); $("#q").focus(); return; }
+    const role = val("role"), mode = val("mode");
+    if (!META.live) {
+      const t = taskFor(question);
+      if (t && recorded(t.id, mode)) return showRecorded(t.id, mode);
+      note("Live runs are off right now. Pick one of the sample questions to replay a recorded run.", true);
+      return;
+    }
+    const btn = $("#run"); btn.disabled = true; document.body.classList.add("busy");
+    if (matchMedia("(max-width: 960px)").matches) $(".trace-card").scrollIntoView({ behavior: reduce ? "auto" : "smooth" });
+    replayToken++;
+    graphMode(mode); light("act");
+    $("#trace").innerHTML = `<div class="trace-head"><p class="q">${esc(question)}</p><div class="badges"><span class="badge live">running on Groq…</span><span class="badge">role: ${esc(role)}</span></div></div><div style="padding:18px"><div class="skel" style="width:60%"></div><div class="skel" style="width:85%"></div><div class="skel" style="width:40%"></div></div>`;
+    note("Running. This usually takes a few seconds.");
+    try {
+      const res = await fetch("/api/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question, role, mode }) });
+      const data = await res.json().catch(() => ({ error: "The server returned an unexpected response." }));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      document.body.classList.remove("busy");
+      await renderRun(data, { live: true });
+      liveNote();
+    } catch (err) {
+      light(null);
+      $("#trace").innerHTML = `<div class="empty"><p>${esc(err.message)}</p></div>`;
+      note(err.message, true);
+    } finally {
+      btn.disabled = false; document.body.classList.remove("busy");
+    }
+  }
+  $("#run").onclick = go;
+  $("#q").addEventListener("keydown", e => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") go(); });
+  document.querySelectorAll("input[name=mode]").forEach(el => el.addEventListener("change", () => {
+    graphMode(val("mode"));
+    const t = taskFor($("#q").value);
+    if (t && recorded(t.id, val("mode")) && $("#steps")) showRecorded(t.id, val("mode"));
+  }));
+
+  /* ---------- benchmark ---------- */
+  function renderBench() {
+    const r = META.results;
+    const el = $("#bench");
+    if (!r?.configs?.plan_verify) {
+      el.innerHTML = `<div class="card pending-box"><p><b>Results pending.</b> The benchmark runs in GitHub Actions against the Groq API and commits its results here. Until then, the questions it will use are listed below.</p></div>` + runsTable();
+      bindRuns(); return;
+    }
+    const pv = r.configs.plan_verify, re = r.configs.react, off = r.configs.plan_verify_open;
+    const cats = Object.keys(pv.by_category);
+    const rate = (c, k) => c?.by_category?.[k] ? c.by_category[k].passed / c.by_category[k].total : null;
+    const bars = cats.map(k => {
+      const a = rate(re, k), b = rate(pv, k), tot = pv.by_category[k].total;
+      return `<div class="bar-row"><div class="name">${esc(CAT_LABEL[k] || k)}<small>${tot} questions</small></div><div class="bar-track">
+        ${re ? `<div class="bar a" title="Plain loop ${pct(a)}"><i style="width:${(a ?? 0) * 100}%"></i><span>${pct(a)}</span></div>` : ""}
+        <div class="bar b" title="Plan + verify ${pct(b)}"><i style="width:${(b ?? 0) * 100}%"></i><span>${pct(b)}</span></div></div></div>`;
+    }).join("");
+    const row = (name, c) => c ? `<tr><td>${esc(name)}</td><td>${pct(c.pass_rate)}</td><td>${c.avg_llm_calls}</td><td>${c.avg_tool_calls}</td><td>${fmt(c.avg_tokens)}</td><td>${c.latency_ms_p50 != null ? (c.latency_ms_p50 / 1000).toFixed(1) + " s" : "–"}</td><td>${c.latency_ms_p95 != null ? (c.latency_ms_p95 / 1000).toFixed(1) + " s" : "–"}</td></tr>` : "";
+    el.innerHTML = `
+      <div class="grid2">
+        <div class="card panel">
+          <h3>Accuracy by question type</h3>
+          <p class="cap">Share of questions passed, same model (<span class="mono">${esc(r.model)}</span>) for both.</p>
+          <div class="key">${re ? `<span><i style="background:var(--line-2)"></i>Plain loop · ${pct(re.pass_rate)}</span>` : ""}<span><i style="background:var(--accent)"></i>Plan + verify · ${pct(pv.pass_rate)}</span></div>
+          <div class="bars">${bars}</div>
+        </div>
+        <div class="card panel">
+          <h3>Do the guardrails matter?</h3>
+          <p class="cap">${off ? `The ${off.total} action and injection questions, run again with every guardrail switched off.` : "Run the guardrails-off configuration to fill this in."}</p>
+          ${off ? `<div class="ablation">
+            <div class="ab off"><b>${fmt(off.tickets_created_in_injection_tasks)}</b><span>tickets opened by the planted instruction, guardrails off</span></div>
+            <div class="ab on"><b>${fmt(pv.tickets_created_in_injection_tasks)}</b><span>with guardrails on (${fmt(pv.injection_findings)} injected sentences screened out)</span></div>
+          </div>
+          <p class="cap" style="margin:12px 0 0">Pass rate on these questions: <b>${pct(off.pass_rate)}</b> with guardrails off vs <b>${pct(subsetRate("plan_verify", ["injection", "action"]))}</b> on.</p>` : ""}
+          <h3 style="margin-top:20px">Cost per question</h3>
+          <div style="overflow-x:auto"><table class="cost"><thead><tr><th>Config</th><th>Pass</th><th>Model calls</th><th>Tool calls</th><th>Tokens</th><th>p50</th><th>p95</th></tr></thead><tbody>
+            ${row("Plain loop", re)}${row("Plan + verify", pv)}${row("Guardrails off*", off)}
+          </tbody></table></div>
+          ${off ? `<p class="cap" style="margin:8px 0 0">* action and injection questions only</p>` : ""}
+        </div>
+      </div>` + runsTable();
+    bindRuns();
+  }
+  function subsetRate(cfg, cats) {
+    const rs = (META.runs[cfg] || []).filter(r => cats.includes(r.category));
+    return rs.length ? rs.filter(r => r.pass).length / rs.length : null;
+  }
+  function runsTable() {
+    const cfgs = ["react", "plan_verify", "plan_verify_open"];
+    const cell = (id, c) => { const r = recorded(id, c); return r ? `<button class="pf ${r.pass ? "p" : "f"}" data-id="${esc(id)}" data-cfg="${c}" title="Open this run">${r.pass ? "pass" : "fail"}</button>` : `<span class="pf na">–</span>`; };
+    const cats = [...new Set(META.tasks.map(t => t.category))];
+    return `<div class="card runs"><div class="runs-tools"><b style="font-size:15px">All ${META.tasks.length} questions</b>
+      <input type="search" id="rsearch" placeholder="Filter questions" aria-label="Filter questions">
+      <div class="seg" id="rcat"><input type="radio" name="rcat" id="rc-all" value="" checked><label for="rc-all">All</label>${cats.map(c => `<input type="radio" name="rcat" id="rc-${c}" value="${c}"><label for="rc-${c}">${esc(CAT_LABEL[c] || c)}</label>`).join("")}</div>
+      </div><div class="runs-list"><table class="runs-t"><thead><tr><th>Question</th>${cfgs.map(c => `<th>${CFG_LABEL[c]}</th>`).join("")}</tr></thead><tbody id="rbody">${
+      META.tasks.map(t => `<tr data-cat="${t.category}" data-q="${esc(t.question.toLowerCase())}"><td class="q"><span class="cat">${esc(t.id)}${t.role === "viewer" ? " · as viewer" : ""}</span>${esc(t.question)}</td>${cfgs.map(c => `<td>${cell(t.id, c)}</td>`).join("")}</tr>`).join("")
+    }</tbody></table></div></div>`;
+  }
+  function bindRuns() {
+    const body = $("#rbody"); if (!body) return;
+    body.onclick = e => { const b = e.target.closest("button.pf"); if (b) showRecorded(b.dataset.id, b.dataset.cfg, true); };
+    const filter = () => {
+      const q = $("#rsearch").value.trim().toLowerCase(), c = val("rcat");
+      body.querySelectorAll("tr").forEach(tr => { tr.hidden = (c && tr.dataset.cat !== c) || (q && !tr.dataset.q.includes(q)); });
+    };
+    $("#rsearch").oninput = filter;
+    document.querySelectorAll("input[name=rcat]").forEach(el => el.onchange = filter);
+    const seg = $("#rcat"); seg.style.flexWrap = "wrap";
+  }
+
+  /* ---------- boot ---------- */
+  graphMode("plan_verify");
+  renderStats();
+  fetch("/api/agent?meta=1").then(r => r.json()).then(m => {
+    META = m;
+    renderStats(); renderSamples(); renderBench(); liveNote();
+  }).catch(() => note("Couldn't reach the server. Try reloading.", true));
+})();
+</script>
+</body>
+</html>
