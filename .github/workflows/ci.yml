@@ -1,0 +1,59 @@
+name: ci
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      configs:
+        description: "Benchmark configs (comma-separated): react, plan_verify, plan_verify_open"
+        default: "react,plan_verify,plan_verify_open"
+      model:
+        description: "Groq model id (blank = first available from the preference list)"
+        default: ""
+      limit:
+        description: "Tasks per config (blank = all 37)"
+        default: ""
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r requirements-dev.txt
+      - run: python -m agent.data --check    # the database rebuilds byte-for-byte from the seed
+      - run: python -m bench.build_tasks --check  # every expected answer re-derived from SQL
+      - run: pytest -q
+
+  benchmark:
+    # Runs only when started by hand (Actions -> ci -> Run workflow), because it calls the Groq API.
+    if: github.event_name == 'workflow_dispatch'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency: benchmark
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r requirements.txt
+      - name: Run benchmark on Groq
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CONFIGS: ${{ inputs.configs }}
+          MODEL: ${{ inputs.model }}
+          LIMIT: ${{ inputs.limit }}
+        run: |
+          test -n "$GROQ_API_KEY" || { echo "::error::Add a GROQ_API_KEY repository secret first"; exit 1; }
+          python -m scripts.benchmark --configs "$CONFIGS" ${MODEL:+--model "$MODEL"} ${LIMIT:+--limit "$LIMIT"}
+      - name: Commit results (and the response cache, so a rate-limited run resumes next time)
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add results/
+          git diff --cached --quiet && exit 0
+          git commit -m "Benchmark results from run ${{ github.run_id }}"
+          git push
